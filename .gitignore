@@ -1,0 +1,6 @@
+# 数据采集爬虫的下载产物目录
+tools/数据采集爬虫/slice/
+tools/数据采集爬虫/result/
+
+# Python 缓存
+__pycache__/

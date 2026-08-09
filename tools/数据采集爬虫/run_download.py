@@ -110,7 +110,8 @@ def _detect_kind(stream_url, referer):
     """
     suffix = Path(urlparse(stream_url).path).suffix.lower()
     if suffix == ".m3u8":
-        return "m3u8", ".ts"
+        # M3U8 片段经 ffmpeg 重新封装为 MP4，时长元数据完整，剪辑软件可正常导入
+        return "m3u8", ".mp4"
     if suffix in VIDEO_SUFFIXES:
         return "direct", suffix
 
@@ -123,7 +124,7 @@ def _detect_kind(stream_url, referer):
             ctype = (resp.headers.get("Content-Type") or "").lower()
         if "mpegurl" in ctype or "m3u8" in ctype:
             print("  → 探测结果: M3U8 流媒体")
-            return "m3u8", ".ts"
+            return "m3u8", ".mp4"
     except Exception as e:
         print("  → 探测失败(%s)，按直链视频处理" % e)
     print("  → 探测结果: 直链视频文件")

@@ -14,6 +14,8 @@ M3U8 视频下载爬虫
 import argparse
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.request
@@ -175,6 +177,9 @@ class M3U8Downloader:
         self._log("[URL] M3U8 地址: " + m3u8_url)
         self._log("[DIR] 临时目录: " + str(temp_dir))
         self._log("[OUT] 输出文件: " + str(output_path))
+        if not shutil.which("ffmpeg"):
+            self._log("[WARN] 未检测到 ffmpeg，合并时将回退为二进制拼接，"
+                      "输出视频的时长元数据可能异常！")
         self._log("")
 
         # Step 1: 获取并解析主 M3U8
@@ -291,13 +296,53 @@ class M3U8Downloader:
 
     def merge_segments(self, temp_dir, output_path, total_count):
         """按顺序合并 TS 片段为最终视频文件"""
-        # MPEG-TS 格式可以直接二进制拼接
-        with open(output_path, "wb") as outf:
-            for i in range(total_count):
-                seg_path = temp_dir / ("%06d.ts" % i)
-                if seg_path.exists():
+        output_path = Path(output_path).resolve()
+        seg_paths = [temp_dir / ("%06d.ts" % i) for i in range(total_count)]
+        seg_paths = [p for p in seg_paths if p.exists()]
+
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            # 无 ffmpeg 时只能直接二进制拼接：时间戳不连续、无正确时长元数据，
+            # 播放器和剪辑软件可能无法识别完整时长，故给出明确警告
+            self._log("   [WARN] 未检测到 ffmpeg，回退为直接二进制拼接。")
+            self._log("   [WARN] 合并结果可能存在时长显示异常，建议安装 ffmpeg 后重试。")
+            with open(output_path, "wb") as outf:
+                for seg_path in seg_paths:
                     with open(seg_path, "rb") as segf:
                         outf.write(segf.read())
+            return
+
+        self._merge_with_ffmpeg(ffmpeg, seg_paths, temp_dir, output_path)
+
+    def _merge_with_ffmpeg(self, ffmpeg, seg_paths, temp_dir, output_path):
+        """
+        使用 ffmpeg concat demuxer 合并片段并重新封装。
+        不重编码（-c copy），仅重建连续时间戳并写入正确的容器元数据，
+        避免直接二进制拼接导致的时长显示异常 / 剪辑软件无法识别问题。
+        """
+        list_path = temp_dir / "_concat_list.txt"
+        with open(list_path, "w", encoding="utf-8") as f:
+            for seg_path in seg_paths:
+                # 使用片段文件名（相对列表文件所在目录解析）
+                f.write("file '%s'\n" % seg_path.name)
+
+        cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+               "-f", "concat", "-safe", "0", "-i", list_path.name,
+               "-c", "copy"]
+        if output_path.suffix.lower() == ".mp4":
+            # TS 中的 AAC 为 ADTS 格式，封装进 MP4 需转换；faststart 便于流式播放
+            cmd += ["-bsf:a", "aac_adtstoasc", "-movflags", "+faststart"]
+        cmd.append(str(output_path))
+
+        try:
+            subprocess.run(cmd, cwd=str(temp_dir), check=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError("ffmpeg 合并失败（退出码 %d）" % e.returncode)
+        finally:
+            try:
+                list_path.unlink()
+            except OSError:
+                pass
 
     def _clean_temp(self, temp_dir):
         """清理临时片段文件（保留目录本身，便于断点续传时复用）"""

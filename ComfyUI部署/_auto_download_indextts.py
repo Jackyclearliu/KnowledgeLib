@@ -7,8 +7,9 @@ import os
 import sys
 
 # 模型保存路径
-LOCAL_DIR = r"D:\Program Files\AI\ComfyUI\models\IndexTTS-2"
-REPO_ID = "IndexTeam/IndexTTS-2"
+# LOCAL_DIR = r"D:\Program Files\AI\ComfyUI\models\IndexTTS-2.5"
+LOCAL_DIR = r"D:\Program Files\AI\index-tts\checkpoints"
+REPO_ID = "IndexTeam/IndexTTS-2.5"
 
 def main():
     try:
@@ -32,7 +33,7 @@ def main():
     )
 
     print("-" * 50)
-    print("✅ IndexTTS-2 模型下载完成!")
+    print("✅ IndexTTS-2.5 模型下载完成!")
     print(f"保存位置: {LOCAL_DIR}")
 
 if __name__ == "__main__":
